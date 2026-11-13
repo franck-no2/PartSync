@@ -58,6 +58,14 @@
   #pageLbl { font-size: 13px; color: var(--dim); min-width: 90px; text-align: center; }
   #status { font-size: 12px; color: var(--dim); text-align: center; margin-top: 6px; min-height: 15px; }
   #status.ok { color: var(--ok); }
+  body.zen header, body.zen footer { display: none; }
+  body.zen main { position: fixed; inset: 0; }
+  #zenHint {
+    position: fixed; top: 10px; left: 0; right: 0; text-align: center; font-size: 13px;
+    color: #fff; background: rgba(0,0,0,.55); padding: 8px 12px; border-radius: 12px;
+    width: max-content; max-width: 90vw; margin: 0 auto; pointer-events: none;
+    opacity: 0; transition: opacity .4s; z-index: 10;
+  }
   dialog {
     background: var(--panel); color: var(--txt); border: 1px solid var(--line);
     border-radius: 14px; max-width: 92vw; width: 480px; padding: 16px;
@@ -113,7 +121,6 @@
     </select>
     <button class="small" id="zoomOut">➖</button>
     <button class="small" id="zoomIn">➕</button>
-    <button class="small" id="btnFs" title="Plein écran">⛶ Plein écran</button>
   </div>
   <div id="pageRow">
     <button id="prevPage">◀ Page</button>
@@ -133,6 +140,7 @@
 </dialog>
 
 <audio id="audio" preload="metadata"></audio>
+<div id="zenHint"></div>
 
 <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script>
@@ -387,6 +395,7 @@
   viewer.addEventListener("click", function (e) {
     if (!state.pdfDoc) return;
     if (e.target.closest("canvas#pdf") === null && e.target.id !== "pdf") return;
+    if (state.mode === "play") { toggleZen(); return; }
     var rect = viewer.getBoundingClientRect();
     var x = (e.clientX - rect.left) / rect.width;
     if (x < 0.3) goToPage(state.page - 1, true);
@@ -400,16 +409,19 @@
   $("zoomIn").onclick = function () { state.zoom = Math.min(3, state.zoom + 0.25); renderPage(state.page); };
   $("zoomOut").onclick = function () { state.zoom = Math.max(0.5, state.zoom - 0.25); renderPage(state.page); };
 
-  $("btnFs").onclick = function () {
-    var el = document.documentElement;
-    var isFs = document.fullscreenElement || document.webkitFullscreenElement;
-    if (!isFs) {
-      var req = el.requestFullscreen || el.webkitRequestFullscreen;
-      if (req) req.call(el); else setStatus("Plein écran non disponible dans ce navigateur.", false);
-    } else {
-      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-    }
-  };
+  function toggleZen() {
+    var on = document.body.classList.toggle("zen");
+    showZenHint(on ? "Touchez l'écran pour afficher les commandes" : "");
+    setTimeout(function () { if (state.pdfDoc) renderPage(state.page); }, 80);
+  }
+
+  var zenTimer = null;
+  function showZenHint(msg) {
+    var h = $("zenHint");
+    if (!msg) { h.style.opacity = 0; return; }
+    h.textContent = msg; h.style.opacity = 1;
+    clearTimeout(zenTimer); zenTimer = setTimeout(function () { h.style.opacity = 0; }, 2500);
+  }
 
   window.addEventListener("resize", function () { if (state.pdfDoc) renderPage(state.page); });
   updatePageLbl();

@@ -113,6 +113,7 @@
     </select>
     <button class="small" id="zoomOut">➖</button>
     <button class="small" id="zoomIn">➕</button>
+    <button class="small" id="btnFs" title="Plein écran">⛶ Plein écran</button>
   </div>
   <div id="pageRow">
     <button id="prevPage">◀ Page</button>
@@ -398,6 +399,17 @@
   $("nextPage").onclick = function () { goToPage(state.page + 1, true); };
   $("zoomIn").onclick = function () { state.zoom = Math.min(3, state.zoom + 0.25); renderPage(state.page); };
   $("zoomOut").onclick = function () { state.zoom = Math.max(0.5, state.zoom - 0.25); renderPage(state.page); };
+
+  $("btnFs").onclick = function () {
+    var el = document.documentElement;
+    var isFs = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!isFs) {
+      var req = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (req) req.call(el); else setStatus("Plein écran non disponible dans ce navigateur.", false);
+    } else {
+      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    }
+  };
 
   window.addEventListener("resize", function () { if (state.pdfDoc) renderPage(state.page); });
   updatePageLbl();

@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Partition Sync</title>
+<style>
+  :root {
+    --bg: #14161c; --panel: #1e222b; --panel2: #262b36; --line: #353c4a;
+    --txt: #e8ebf2; --dim: #9aa3b5; --accent: #ff5c8a; --accent2: #4da3ff; --ok: #4ade80;
+    font-family: -apple-system, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--txt); }
+  body { display: flex; flex-direction: column; }
+  header {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+    background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap;
+  }
+  header .title { font-weight: 700; font-size: 15px; margin-right: 4px; }
+  button {
+    background: var(--panel2); color: var(--txt); border: 1px solid var(--line);
+    border-radius: 10px; padding: 9px 13px; font-size: 14px; cursor: pointer;
+  }
+  button:active { transform: scale(0.96); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.blue { background: var(--accent2); border-color: var(--accent2); color: #fff; font-weight: 600; }
+  button.small { padding: 6px 9px; font-size: 12px; }
+  button:disabled { opacity: 0.4; }
+  .fname { font-size: 12px; color: var(--dim); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spacer { flex: 1; }
+  select {
+    background: var(--panel2); color: var(--txt); border: 1px solid var(--line);
+    border-radius: 10px; padding: 8px; font-size: 14px;
+  }
+  main { flex: 1; overflow: auto; position: relative; background: #0d0f13; }
+  #pdfWrap { display: flex; justify-content: center; padding: 8px; min-height: 100%; }
+  canvas#pdf { max-width: 100%; height: auto; display: none; box-shadow: 0 4px 24px rgba(0,0,0,.5); }
+  #placeholder {
+    position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px;
+    align-items: center; justify-content: center; color: var(--dim); text-align: center; padding: 24px;
+  }
+  #tapHint {
+    position: absolute; top: 8px; left: 0; right: 0; text-align: center; font-size: 12px;
+    color: var(--dim); pointer-events: none; opacity: 0; transition: opacity .3s;
+  }
+  footer { background: var(--panel); border-top: 1px solid var(--line); padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); }
+  #seekRow { display: flex; align-items: center; gap: 8px; }
+  #seekBar { flex: 1; position: relative; height: 26px; display: flex; align-items: center; }
+  #seekTrack { width: 100%; height: 6px; background: var(--line); border-radius: 3px; }
+  #seekFill { position: absolute; left: 0; top: 10px; height: 6px; background: var(--accent2); border-radius: 3px; width: 0; pointer-events: none; }
+  .marker { position: absolute; top: 1px; width: 3px; height: 24px; background: var(--accent); border-radius: 2px; pointer-events: none; }
+  #seekBar input[type=range] { position: absolute; inset: 0; width: 100%; opacity: 0; height: 100%; margin: 0; }
+  #timeLbl { font-size: 12px; color: var(--dim); min-width: 86px; text-align: center; font-variant-numeric: tabular-nums; }
+  #ctrlRow { display: flex; align-items: center; gap: 8px; margin-top: 8px; justify-content: center; flex-wrap: wrap; }
+  #pageRow { display: flex; align-items: center; gap: 8px; margin-top: 8px; justify-content: center; flex-wrap: wrap; }
+  #pageLbl { font-size: 13px; color: var(--dim); min-width: 90px; text-align: center; }
+  #status { font-size: 12px; color: var(--dim); text-align: center; margin-top: 6px; min-height: 15px; }
+  #status.ok { color: var(--ok); }
+  dialog {
+    background: var(--panel); color: var(--txt); border: 1px solid var(--line);
+    border-radius: 14px; max-width: 92vw; width: 480px; padding: 16px;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  textarea { width: 100%; height: 180px; background: #0d0f13; color: var(--txt); border: 1px solid var(--line); border-radius: 8px; font-family: monospace; font-size: 12px; }
+  h3 { margin: 0 0 10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="title">🎼 Partition Sync</span>
+  <button id="btnPdf">📄 PDF</button><span class="fname" id="pdfName"></span>
+  <button id="btnAudio">🎵 Audio</button><span class="fname" id="audioName"></span>
+  <span class="spacer"></span>
+  <select id="mode">
+    <option value="sync">🎯 Synchronisation</option>
+    <option value="play">▶️ Lecture auto</option>
+  </select>
+  <button class="small" id="btnExport">Exporter</button>
+  <button class="small" id="btnImport">Importer</button>
+  <button class="small" id="btnClear">Effacer points</button>
+  <input type="file" id="pdfFile" accept="application/pdf" hidden>
+  <input type="file" id="audioFile" accept="audio/*" hidden>
+  <input type="file" id="jsonFile" accept=".json,application/json" hidden>
+</header>
+
+<main id="viewer">
+  <div id="placeholder">
+    <div style="font-size:40px">📂</div>
+    <div>Chargez un PDF et un fichier audio (mp3, m4a, wav…).<br>
+    Tout reste local sur votre appareil.</div>
+    <div style="font-size:12px">Nécessite internet au premier chargement (bibliothèque PDF.js).</div>
+  </div>
+  <div id="tapHint"></div>
+  <div id="pdfWrap"><canvas id="pdf"></canvas></div>
+</main>
+
+<footer>
+  <div id="seekRow">
+    <button class="small" id="back10">⏪10</button>
+    <div id="seekBar"><div id="seekTrack"></div><div id="seekFill"></div><input type="range" id="seek" min="0" max="1000" value="0"></div>
+    <button class="small" id="fwd10">10⏩</button>
+    <span id="timeLbl">0:00 / 0:00</span>
+  </div>
+  <div id="ctrlRow">
+    <button id="play" class="blue" disabled>▶︎ Lecture</button>
+    <select id="speed">
+      <option value="0.5">×0,5</option><option value="0.75">×0,75</option>
+      <option value="1" selected>×1</option><option value="1.25">×1,25</option>
+      <option value="1.5">×1,5</option><option value="2">×2</option>
+    </select>
+    <button class="small" id="zoomOut">➖</button>
+    <button class="small" id="zoomIn">➕</button>
+  </div>
+  <div id="pageRow">
+    <button id="prevPage">◀ Page</button>
+    <span id="pageLbl">— / —</span>
+    <button id="nextPage">Page ▶</button>
+  </div>
+  <div id="status"></div>
+</footer>
+
+<dialog id="dlg">
+  <h3 id="dlgTitle">Points de synchronisation</h3>
+  <textarea id="dlgText" spellcheck="false"></textarea>
+  <div style="display:flex; gap:8px; margin-top:10px; justify-content:flex-end">
+    <button id="dlgApply" class="primary">Appliquer</button>
+    <button id="dlgClose">Fermer</button>
+  </div>
+</dialog>
+
+<audio id="audio" preload="metadata"></audio>
+
+<script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var audio = $("audio"), viewer = $("viewer"), canvas = $("pdf"), ctx = canvas.getContext("2d");
+
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+  }
+
+  var state = {
+    pdfDoc: null, numPages: 0, page: 1, zoom: 1,
+    points: [],            // [{t: seconds, p: pageNumber}] triés par t
+    mode: "sync",
+    pdfName: "", audioName: "",
+    rendering: false, pendingPage: null
+  };
+
+  function setStatus(msg, ok) {
+    var s = $("status"); s.textContent = msg || ""; s.className = ok ? "ok" : "";
+  }
+
+  /* ---------- Chargement des fichiers ---------- */
+
+  $("btnPdf").onclick = function () { $("pdfFile").click(); };
+  $("btnAudio").onclick = function () { $("audioFile").click(); };
+  $("pdfFile").onchange = function (e) {
+    var f = e.target.files[0]; if (!f) return;
+    if (!window.pdfjsLib) { setStatus("PDF.js indisponible : vérifiez la connexion internet.", false); return; }
+    var reader = new FileReader();
+    reader.onload = function () {
+      pdfjsLib.getDocument({ data: new Uint8Array(reader.result) }).promise.then(function (doc) {
+        state.pdfDoc = doc; state.numPages = doc.numPages; state.page = 1;
+        state.pdfName = f.name.replace(/\.pdf$/i, "");
+        canvas.style.display = "block"; $("placeholder").style.display = "none";
+        $("pdfName").textContent = f.name;
+        renderPage(1); updatePageLbl(); tryLoadPoints(); checkReady();
+      }).catch(function (err) { setStatus("Erreur PDF : " + err.message, false); });
+    };
+    reader.readAsArrayBuffer(f);
+    e.target.value = "";
+  };
+  $("audioFile").onchange = function (e) {
+    var f = e.target.files[0]; if (!f) return;
+    audio.src = URL.createObjectURL(f);
+    state.audioName = f.name;
+    $("audioName").textContent = f.name;
+    $("play").disabled = false;
+    audio.onloadedmetadata = function () { updateTimeLbl(); drawMarkers(); tryLoadPoints(); checkReady(); };
+    checkReady();
+    e.target.value = "";
+  };
+
+  function checkReady() {
+    if (state.pdfDoc && audio.src) setStatus("Prêt. Mode Synchronisation : lancez la lecture et tournez les pages en rythme.", true);
+  }
+
+  /* ---------- Rendu PDF ---------- */
+
+  function renderPage(n) {
+    if (!state.pdfDoc || state.rendering) { state.pendingPage = n; return; }
+    state.rendering = true;
+    state.pdfDoc.getPage(n).then(function (page) {
+      var base = page.getViewport({ scale: 1 });
+      var fit = (viewer.clientWidth - 20) / base.width;
+      var vp = page.getViewport({ scale: fit * state.zoom });
+      var dpr = window.devicePixelRatio || 1;
+      canvas.width = vp.width * dpr; canvas.height = vp.height * dpr;
+      canvas.style.width = vp.width + "px";
+      var task = page.render({ canvasContext: ctx, viewport: vp, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null });
+      return task.promise;
+    }).then(function () {
+      state.rendering = false;
+      if (state.pendingPage !== null && state.pendingPage !== n) {
+        var p = state.pendingPage; state.pendingPage = null; renderPage(p);
+      }
+    }).catch(function () { state.rendering = false; });
+  }
+
+  function goToPage(n, record) {
+    if (!state.pdfDoc) return;
+    n = Math.min(Math.max(1, n), state.numPages);
+    if (n === state.page) return;
+    state.page = n;
+    renderPage(n); updatePageLbl();
+    if (record && state.mode === "sync") addPoint(audio.currentTime, n);
+  }
+
+  function updatePageLbl() {
+    $("pageLbl").textContent = state.pdfDoc ? (state.page + " / " + state.numPages) : "— / —";
+  }
+
+  /* ---------- Points de synchronisation ---------- */
+
+  function sortPoints() { state.points.sort(function (a, b) { return a.t - b.t; }); }
+
+  function addPoint(t, p) {
+    state.points = state.points.filter(function (pt) { return Math.abs(pt.t - t) > 0.15; });
+    state.points.push({ t: Math.round(t * 100) / 100, p: p });
+    sortPoints(); drawMarkers(); savePoints();
+    setStatus("Point enregistré : page " + p + " à " + fmt(t), true);
+  }
+
+  function pageForTime(t) {
+    var p = 1;
+    for (var i = 0; i < state.points.length; i++) {
+      if (state.points[i].t <= t + 0.02) p = state.points[i].p; else break;
+    }
+    return p;
+  }
+
+  function drawMarkers() {
+    document.querySelectorAll(".marker").forEach(function (m) { m.remove(); });
+    if (!isFinite(audio.duration) || !audio.duration) return;
+    state.points.forEach(function (pt) {
+      var m = document.createElement("div");
+      m.className = "marker";
+      m.style.left = "calc(" + (pt.t / audio.duration * 100) + "% - 1px)";
+      $("seekBar").appendChild(m);
+    });
+  }
+
+  function savePoints() {
+    if (!state.pdfName || !state.audioName) return;
+    try {
+      localStorage.setItem(key(), JSON.stringify({ pdf: state.pdfName, audio: state.audioName, points: state.points }));
+    } catch (e) {}
+  }
+  function key() { return "partitionsync:" + state.pdfName + "|" + state.audioName; }
+  function tryLoadPoints() {
+    if (!state.pdfName || !state.audioName) return;
+    try {
+      var raw = localStorage.getItem(key());
+      if (raw) {
+        var d = JSON.parse(raw);
+        if (d && d.points && d.points.length) {
+          state.points = d.points; sortPoints(); drawMarkers();
+          setStatus(d.points.length + " point(s) rechargé(s) depuis la sauvegarde locale.", true);
+        }
+      }
+    } catch (e) {}
+  }
+
+  /* ---------- Export / Import ---------- */
+
+  $("btnExport").onclick = function () {
+    $("dlgTitle").textContent = "Exporter les points";
+    $("dlgText").value = JSON.stringify({ pdf: state.pdfName, audio: state.audioName, points: state.points }, null, 2);
+    $("dlg").showModal();
+    var blob = new Blob([$("dlgText").value], { type: "application/json" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = (state.audioName || "sync").replace(/\.[^.]+$/, "") + "-sync.json";
+    a.click();
+  };
+  $("btnImport").onclick = function () { $("jsonFile").click(); };
+  $("jsonFile").onchange = function (e) {
+    var f = e.target.files[0]; if (!f) return;
+    var r = new FileReader();
+    r.onload = function () {
+      try {
+        var d = JSON.parse(r.result);
+        if (!d.points) throw new Error("format invalide");
+        state.points = d.points; sortPoints(); drawMarkers(); savePoints();
+        setStatus(d.points.length + " point(s) importé(s).", true);
+      } catch (err) { setStatus("Import impossible : " + err.message, false); }
+    };
+    r.readAsText(f); e.target.value = "";
+  };
+  $("btnClear").onclick = function () {
+    state.points = []; drawMarkers(); savePoints(); setStatus("Points effacés.");
+  };
+  $("dlgClose").onclick = function () { $("dlg").close(); };
+  $("dlgApply").onclick = function () {
+    try {
+      var d = JSON.parse($("dlgText").value);
+      state.points = d.points || d; sortPoints(); drawMarkers(); savePoints();
+      setStatus(state.points.length + " point(s) appliqué(s).", true);
+      $("dlg").close();
+    } catch (err) { alert("JSON invalide : " + err.message); }
+  };
+
+  /* ---------- Audio ---------- */
+
+  $("play").onclick = function () { audio.paused ? audio.play() : audio.pause(); };
+  audio.onplay = function () { $("play").textContent = "⏸ Pause"; };
+  audio.onpause = function () { $("play").textContent = "▶︎ Lecture"; };
+
+  $("speed").onchange = function () { audio.playbackRate = parseFloat(this.value); };
+  $("back10").onclick = function () { audio.currentTime = Math.max(0, audio.currentTime - 10); };
+  $("fwd10").onclick = function () { audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 10); };
+
+  var seeking = false;
+  $("seek").oninput = function () { seeking = true; setFill(this.value / 1000); };
+  $("seek").onchange = function () {
+    if (isFinite(audio.duration)) audio.currentTime = this.value / 1000 * audio.duration;
+    seeking = false;
+  };
+  function setFill(r) { $("seekFill").style.width = (r * 100) + "%"; }
+
+  function fmt(t) {
+    if (!isFinite(t)) t = 0;
+    var m = Math.floor(t / 60), s = Math.floor(t % 60);
+    return m + ":" + (s < 10 ? "0" : "") + s;
+  }
+  function updateTimeLbl() {
+    $("timeLbl").textContent = fmt(audio.currentTime) + " / " + fmt(audio.duration);
+  }
+
+  audio.ontimeupdate = function () {
+    if (!seeking && isFinite(audio.duration) && audio.duration) {
+      $("seek").value = audio.currentTime / audio.duration * 1000;
+      setFill(audio.currentTime / audio.duration);
+    }
+    updateTimeLbl();
+  };
+
+  /* ---------- Boucle de tourne-page automatique ---------- */
+
+  var lastAutoPage = -1;
+  function loop() {
+    if (state.mode === "play" && state.pdfDoc && !audio.paused) {
+      var p = pageForTime(audio.currentTime);
+      if (p !== lastAutoPage) {
+        lastAutoPage = p;
+        if (p !== state.page) { state.page = p; renderPage(p); updatePageLbl(); }
+      }
+    } else { lastAutoPage = -1; }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  /* ---------- Modes ---------- */
+
+  $("mode").onchange = function () {
+    state.mode = this.value;
+    showTapHint(state.mode === "sync"
+      ? "Mode Sync : touchez la partition (droite = page suivante, gauche = précédente), chaque tour est enregistré"
+      : "Mode Lecture : les pages tournent automatiquement avec l'audio");
+  };
+
+  var hintTimer = null;
+  function showTapHint(msg) {
+    var h = $("tapHint"); h.textContent = msg; h.style.opacity = 1;
+    clearTimeout(hintTimer); hintTimer = setTimeout(function () { h.style.opacity = 0; }, 4000);
+  }
+
+  /* ---------- Taps sur la partition ---------- */
+
+  viewer.addEventListener("click", function (e) {
+    if (!state.pdfDoc) return;
+    if (e.target.closest("canvas#pdf") === null && e.target.id !== "pdf") return;
+    var rect = viewer.getBoundingClientRect();
+    var x = (e.clientX - rect.left) / rect.width;
+    if (x < 0.3) goToPage(state.page - 1, true);
+    else goToPage(state.page + 1, true);
+  });
+
+  /* ---------- Boutons de page ---------- */
+
+  $("prevPage").onclick = function () { goToPage(state.page - 1, true); };
+  $("nextPage").onclick = function () { goToPage(state.page + 1, true); };
+  $("zoomIn").onclick = function () { state.zoom = Math.min(3, state.zoom + 0.25); renderPage(state.page); };
+  $("zoomOut").onclick = function () { state.zoom = Math.max(0.5, state.zoom - 0.25); renderPage(state.page); };
+
+  window.addEventListener("resize", function () { if (state.pdfDoc) renderPage(state.page); });
+  updatePageLbl();
+})();
+</script>
+</body>
+</html>

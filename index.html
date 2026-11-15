@@ -328,8 +328,26 @@
   /* ---------- Audio ---------- */
 
   $("play").onclick = function () { audio.paused ? audio.play() : audio.pause(); };
-  audio.onplay = function () { $("play").textContent = "⏸ Pause"; };
-  audio.onpause = function () { $("play").textContent = "▶︎ Lecture"; };
+  audio.onplay = function () { $("play").textContent = "⏸ Pause"; requestWake(); };
+  audio.onpause = function () { $("play").textContent = "▶︎ Lecture"; releaseWake(); };
+  audio.onended = function () { releaseWake(); };
+
+  /* ---------- Anti-veille (Wake Lock) ---------- */
+
+  var wakeLock = null;
+  function requestWake() {
+    if (!("wakeLock" in navigator)) return;
+    navigator.wakeLock.request("screen").then(function (wl) {
+      wakeLock = wl;
+      wl.addEventListener("release", function () { wakeLock = null; });
+    }).catch(function () {});
+  }
+  function releaseWake() {
+    if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && !audio.paused) requestWake();
+  });
 
   $("speed").onchange = function () { audio.playbackRate = parseFloat(this.value); };
   $("back10").onclick = function () { audio.currentTime = Math.max(0, audio.currentTime - 10); };
